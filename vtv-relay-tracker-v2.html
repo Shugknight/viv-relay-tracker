@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ville to Ville — Relay Tracker</title>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { min-height: 100vh; background: #0a0a0f; color: #e8e4d9; font-family: Georgia, serif; padding-bottom: 80px; }
+    .bg { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 20% 20%, rgba(249,115,22,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.06) 0%, transparent 50%),
+        repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.015) 40px, rgba(255,255,255,0.015) 41px),
+        repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,0.015) 40px, rgba(255,255,255,0.015) 41px);
+    }
+    .wrap { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 16px; }
+
+    /* ── LOADING ── */
+    #loading { display:flex; align-items:center; justify-content:center; min-height:100vh; flex-direction:column; gap:16px; }
+    .spinner { width:40px; height:40px; border:3px solid #1e1e2e; border-top-color:#f97316; border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── HOME ── */
+    #home-page { display:none; }
+    .home-header { text-align:center; padding:36px 0 28px; }
+    .eyebrow { font-size:11px; letter-spacing:6px; color:#f97316; font-family:monospace; text-transform:uppercase; margin-bottom:8px; }
+    .main-title { font-size:clamp(28px,6vw,52px); font-weight:900; color:#e8e4d9; line-height:1; text-shadow:0 0 40px rgba(249,115,22,0.3); }
+    .subtitle { font-size:14px; color:#666; margin-top:8px; }
+
+    .create-team-btn { display:block; width:100%; padding:16px; background:#f97316; color:#000; border:none; border-radius:10px; font-family:monospace; font-size:14px; font-weight:700; letter-spacing:2px; cursor:pointer; margin-bottom:24px; transition:all 0.2s; }
+    .create-team-btn:hover { background:#ea6c0a; }
+
+    .teams-label { font-size:10px; letter-spacing:4px; color:#555; font-family:monospace; margin-bottom:12px; }
+    .team-card { background:#111118; border:1px solid #1e1e2e; border-radius:10px; padding:16px 20px; margin-bottom:8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:border-color 0.2s; }
+    .team-card:hover { border-color:#f97316; }
+    .team-name { font-size:17px; font-weight:700; color:#e8e4d9; }
+    .team-meta { font-size:11px; color:#555; font-family:monospace; margin-top:4px; }
+    .team-arrow { color:#444; font-size:18px; }
+    .no-teams { text-align:center; padding:40px; color:#444; font-size:14px; }
+
+    /* ── SETUP ── */
+    #setup-page { display:none; }
+    .page-header { display:flex; align-items:center; gap:12px; padding:24px 0 20px; }
+    .back-btn { background:none; border:1px solid #2a2a3e; color:#888; padding:8px 14px; border-radius:7px; cursor:pointer; font-family:monospace; font-size:12px; }
+    .back-btn:hover { border-color:#f97316; color:#f97316; }
+    .page-title { font-size:22px; font-weight:700; }
+
+    .form-section { background:#111118; border:1px solid #1e1e2e; border-radius:10px; padding:20px; margin-bottom:16px; }
+    .form-label { font-size:10px; letter-spacing:3px; color:#f97316; font-family:monospace; margin-bottom:12px; }
+    .form-input { width:100%; background:#0a0a0f; border:1px solid #2a2a3e; border-radius:7px; padding:12px 14px; color:#e8e4d9; font-family:Georgia,serif; font-size:15px; margin-bottom:10px; }
+    .form-input:focus { outline:none; border-color:#f97316; }
+    .runner-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media(max-width:400px) { .runner-grid { grid-template-columns:1fr; } }
+    .runner-input-wrap { position:relative; }
+    .runner-dot { position:absolute; left:12px; top:50%; transform:translateY(-50%); width:8px; height:8px; border-radius:50%; }
+    .runner-input { width:100%; background:#0a0a0f; border:1px solid #2a2a3e; border-radius:7px; padding:10px 10px 10px 28px; color:#e8e4d9; font-family:Georgia,serif; font-size:14px; }
+    .runner-input:focus { outline:none; border-color:#f97316; }
+
+    .leg-assign-row { display:grid; grid-template-columns:60px 1fr 1fr; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #1a1a24; font-size:13px; }
+    .leg-assign-row:last-child { border-bottom:none; }
+    .leg-num-badge { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; background:#1a1a24; color:#888; }
+    .leg-info { color:#666; font-size:12px; font-family:monospace; }
+    select { width:100%; background:#0a0a0f; border:1px solid #2a2a3e; border-radius:7px; padding:8px 10px; color:#e8e4d9; font-family:Georgia,serif; font-size:13px; cursor:pointer; }
+    select:focus { outline:none; border-color:#f97316; }
+
+    .save-btn { width:100%; padding:16px; background:#10b981; color:#000; border:none; border-radius:10px; font-family:monospace; font-size:14px; font-weight:700; letter-spacing:2px; cursor:pointer; margin-top:8px; }
+    .save-btn:hover { background:#0ea572; }
+
+    /* ── TRACKER ── */
+    #tracker-page { display:none; }
+    .tracker-header { text-align:center; padding:28px 0 20px; }
+    .tracker-team { font-size:clamp(22px,5vw,38px); font-weight:900; color:#e8e4d9; text-shadow:0 0 30px rgba(249,115,22,0.3); }
+    .tracker-meta { display:flex; justify-content:center; gap:20px; font-size:12px; color:#666; flex-wrap:wrap; margin-top:8px; }
+    .tracker-meta strong { color:#e8e4d9; }
+    .live-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; margin-right:4px; animation:pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .nav { display:flex; gap:4px; margin-bottom:20px; background:#111118; border-radius:10px; padding:4px; }
+    .nav-btn { flex:1; padding:10px 0; border:none; border-radius:7px; cursor:pointer; font-family:monospace; font-size:12px; letter-spacing:1px; background:transparent; color:#888; transition:all 0.2s; }
+    .nav-btn.active { background:#f97316; color:#000; font-weight:700; }
+
+    .progress-wrap { margin-bottom:16px; }
+    .progress-labels { display:flex; justify-content:space-between; font-size:11px; color:#666; margin-bottom:4px; font-family:monospace; }
+    .progress-bar { height:6px; background:#1a1a24; border-radius:3px; overflow:hidden; }
+    .progress-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#f97316,#10b981); transition:width 0.4s; }
+
+    /* Leg cards */
+    .leg-card { background:#111118; border:1px solid #1e1e2e; border-radius:10px; overflow:hidden; margin-bottom:8px; transition:border-color 0.2s; }
+    .leg-card.done { background:rgba(16,185,129,0.06); border-color:rgba(16,185,129,0.3); }
+    .leg-row { display:grid; grid-template-columns:40px 90px 1fr 1fr 1fr 30px; align-items:center; padding:14px 16px; cursor:pointer; gap:8px; }
+    @media(max-width:500px) { .leg-row { grid-template-columns:36px 75px 1fr 1fr 30px; gap:6px; padding:12px; } .diff-col{display:none;} }
+    .leg-num-circle { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+    .col-label { font-size:10px; color:#555; font-family:monospace; margin-bottom:2px; }
+    .col-val { font-size:14px; font-weight:600; }
+    .diff-text { font-size:10px; font-family:monospace; font-weight:700; }
+    .dur-text { font-size:11px; color:#555; }
+
+    .leg-detail { display:none; border-top:1px solid #1e1e2e; padding:16px; grid-template-columns:1fr 1fr; gap:16px; }
+    .leg-detail.open { display:grid; }
+    @media(max-width:500px) { .leg-detail { grid-template-columns:1fr; } }
+
+    .detail-section-label { font-size:10px; letter-spacing:3px; color:#555; font-family:monospace; margin-bottom:10px; }
+    .stat-row { display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px; }
+    .stat-key { color:#666; }
+    .stat-val { font-family:monospace; }
+
+    input[type=range] { width:100%; cursor:pointer; }
+    .range-labels { display:flex; justify-content:space-between; font-size:10px; color:#444; font-family:monospace; margin-top:2px; margin-bottom:12px; }
+
+    .field-label { font-size:10px; letter-spacing:3px; color:#555; font-family:monospace; margin-bottom:6px; margin-top:10px; }
+    .time-input { width:100%; background:#0a0a0f; border:1px solid #2a2a3e; border-radius:6px; padding:8px 10px; color:#e8e4d9; font-family:monospace; font-size:14px; }
+    .time-input.has-val { border-color:#10b981; }
+    .confirm-msg { font-size:11px; color:#10b981; margin-top:4px; display:none; }
+    .confirm-msg.show { display:block; }
+
+    .action-row { display:flex; gap:8px; margin-top:12px; }
+    .complete-btn { flex:1; padding:10px; border-radius:7px; border:none; cursor:pointer; font-family:monospace; font-size:11px; font-weight:700; letter-spacing:1px; background:#1a1a24; color:#888; transition:all 0.2s; }
+    .complete-btn.done { background:#10b981; color:#000; }
+    .reassign-btn { padding:10px 14px; border-radius:7px; border:1px solid #2a2a3e; cursor:pointer; font-family:monospace; font-size:11px; background:transparent; color:#888; transition:all 0.2s; }
+    .reassign-btn:hover { border-color:#8b5cf6; color:#8b5cf6; }
+
+    /* Runner cards */
+    .runner-card { background:#111118; border:1px solid #1e1e2e; border-radius:10px; padding:20px; margin-bottom:16px; }
+    .runner-name-big { font-size:22px; font-weight:700; }
+    .runner-sub { font-size:12px; color:#555; font-family:monospace; }
+    .runner-pace-display { font-size:20px; font-family:monospace; }
+    .runner-legs-grid { display:grid; gap:8px; margin-top:16px; }
+    .rleg-card { background:#0a0a0f; border-radius:8px; padding:12px; }
+
+    /* Stats */
+    .stat-section { background:#111118; border:1px solid #1e1e2e; border-radius:10px; padding:20px; margin-bottom:16px; }
+    .overview-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    @media(max-width:400px) { .overview-grid { grid-template-columns:1fr 1fr; } }
+    .overview-cell { background:#0a0a0f; border-radius:8px; padding:12px; }
+    .overview-key { font-size:10px; color:#555; font-family:monospace; }
+    .overview-val { font-size:16px; font-weight:700; margin-top:4px; }
+    .bar-row { display:grid; grid-template-columns:90px 1fr 70px 70px; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #1a1a24; }
+    .bar-track { position:relative; height:6px; background:#1a1a24; border-radius:3px; overflow:hidden; }
+    .bar-fill { position:absolute; left:0; top:0; bottom:0; border-radius:3px; }
+    .hard-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #1a1a24; font-size:13px; }
+    .reset-btn { width:100%; padding:12px; border-radius:8px; border:1px solid #2a2a3e; background:transparent; color:#666; cursor:pointer; font-family:monospace; font-size:12px; letter-spacing:1px; }
+    .reset-btn:hover { border-color:#ef4444; color:#ef4444; }
+
+    /* Modal */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:#111118; border:1px solid #2a2a3e; border-radius:12px; padding:24px; width:100%; max-width:360px; }
+    .modal-title { font-size:16px; font-weight:700; margin-bottom:16px; }
+    .modal-btn { width:100%; padding:12px; border-radius:8px; border:none; cursor:pointer; font-family:monospace; font-size:13px; font-weight:700; margin-bottom:8px; }
+    .modal-cancel { background:#1a1a24; color:#888; }
+    .modal-cancel:hover { background:#2a2a3e; }
+
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#10b981; color:#000; padding:10px 20px; border-radius:8px; font-family:monospace; font-size:13px; font-weight:700; z-index:200; opacity:0; transition:opacity 0.3s; pointer-events:none; }
+    .toast.show { opacity:1; }
+  </style>
+</head>
+<body>
+<div class="bg"></div>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div style="font-family:monospace;font-size:12px;color:#555;letter-spacing:2px">CONNECTING...</div>
+</div>
+
+<!-- Home -->
+<div id="home-page">
+  <div class="wrap">
+    <div class="home-header">
+      <div class="eyebrow">VILLE TO VILLE • CRAFT BREW RELAY</div>
+      <h1 class="main-title">RACE TRACKER</h1>
+      <div class="subtitle">Create or join a team to track your relay</div>
+    </div>
+    <button class="create-team-btn" onclick="showSetup()">+ CREATE NEW TEAM</button>
+    <div class="teams-label">ALL TEAMS</div>
+    <div id="teams-list"><div class="no-teams">No teams yet — be the first!</div></div>
+  </div>
+</div>
+
+<!-- Setup -->
+<div id="setup-page">
+  <div class="wrap">
+    <div class="page-header">
+      <button class="back-btn" onclick="showHome()">← Back</button>
+      <div class="page-title">Create Your Team</div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-label">TEAM NAME</div>
+      <input class="form-input" id="team-name-input" placeholder="e.g. Team Shugknight" />
+    </div>
+
+    <div class="form-section">
+      <div class="form-label">YOUR 6 RUNNERS</div>
+      <div class="runner-grid" id="runner-inputs"></div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-label">ASSIGN RUNNERS TO LEGS</div>
+      <div id="leg-assign-rows"></div>
+    </div>
+
+    <button class="save-btn" onclick="saveTeam()">SAVE & START TRACKING</button>
+  </div>
+</div>
+
+<!-- Tracker -->
+<div id="tracker-page">
+  <div class="wrap">
+    <div class="tracker-header">
+      <div class="eyebrow">VILLE TO VILLE • CRAFT BREW RELAY</div>
+      <div class="tracker-team" id="tracker-team-name">—</div>
+      <div class="tracker-meta">
+        <span><span class="live-dot"></span><span style="color:#10b981;font-family:monospace;font-size:11px">LIVE</span></span>
+        <span>🏁 Start: <strong>8:30 AM</strong></span>
+        <span>🏆 Est. Finish: <strong id="est-finish">—</strong></span>
+        <span id="completed-badge" style="display:none"></span>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="back-btn" onclick="showHome()" style="flex:0">← Teams</button>
+      <button class="back-btn" onclick="showSetupEdit()" style="flex:0">✏️ Edit Team</button>
+    </div>
+
+    <div class="nav">
+      <button class="nav-btn active" data-view="schedule" onclick="switchView('schedule')">📋 Schedule</button>
+      <button class="nav-btn" data-view="runners" onclick="switchView('runners')">🏃 Runners</button>
+      <button class="nav-btn" data-view="stats" onclick="switchView('stats')">📊 Stats</button>
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap" style="display:none">
+      <div class="progress-labels"><span>RACE PROGRESS</span><span id="progress-text">0/12</span></div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    </div>
+
+    <div id="view-schedule"></div>
+    <div id="view-runners" style="display:none"></div>
+    <div id="view-stats" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Reassign Modal -->
+<div class="modal-overlay" id="reassign-modal">
+  <div class="modal">
+    <div class="modal-title" id="reassign-title">Reassign Leg</div>
+    <div id="reassign-options"></div>
+    <button class="modal-btn modal-cancel" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── FIREBASE ──
+const firebaseConfig = {
+  apiKey: "AIzaSyCJK_KNPjFm2hEKnYI6s7AarJSHWGHbV5k",
+  authDomain: "viv-relay-tracker.firebaseapp.com",
+  projectId: "viv-relay-tracker",
+  storageBucket: "viv-relay-tracker.firebasestorage.app",
+  messagingSenderId: "226844927170",
+  appId: "1:226844927170:web:19e9bc544e51f8eae4075b"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ── CONSTANTS ──
+const LEG_DATA = [
+  { leg:1,  miles:6.0,  distRating:6,  ascent:931,  descent:833,  diffRating:3  },
+  { leg:2,  miles:5.84, distRating:7,  ascent:347,  descent:495,  diffRating:7  },
+  { leg:3,  miles:6.45, distRating:5,  ascent:521,  descent:534,  diffRating:6  },
+  { leg:4,  miles:7.90, distRating:3,  ascent:574,  descent:593,  diffRating:2  },
+  { leg:5,  miles:5.45, distRating:8,  ascent:367,  descent:269,  diffRating:9  },
+  { leg:6,  miles:4.64, distRating:9,  ascent:492,  descent:643,  diffRating:8  },
+  { leg:7,  miles:3.53, distRating:12, ascent:492,  descent:259,  diffRating:10 },
+  { leg:8,  miles:8.81, distRating:2,  ascent:629,  descent:1643, diffRating:4  },
+  { leg:9,  miles:8.83, distRating:1,  ascent:495,  descent:741,  diffRating:1  },
+  { leg:10, miles:6.71, distRating:4,  ascent:567,  descent:485,  diffRating:5  },
+  { leg:11, miles:4.44, distRating:10, ascent:232,  descent:328,  diffRating:11 },
+  { leg:12, miles:3.94, distRating:11, ascent:124,  descent:183,  diffRating:12 },
+];
+
+const COLORS = ["#f97316","#3b82f6","#ec4899","#10b981","#8b5cf6","#f59e0b"];
+const START = 8*60+30;
+
+// ── STATE ──
+let currentTeamId = null;
+let currentTeam = null;
+let unsubscribe = null;
+let currentView = 'schedule';
+let expandedLeg = null;
+let allTeams = [];
+
+// ── UTILS ──
+function secondsToPace(s) {
+  const m = Math.floor(s/60), r = Math.round(s%60);
+  return `${m}:${r.toString().padStart(2,'0')}`;
+}
+function minutesToTime(mins) {
+  const t = Math.round(mins), h = Math.floor(t/60), m = t%60;
+  const ap = h>=12?'PM':'AM', h12 = h%12===0?12:h%12;
+  return `${h12}:${m.toString().padStart(2,'0')} ${ap}`;
+}
+function formatDur(mins) {
+  const ts = Math.round(mins*60), h = Math.floor(ts/3600), m = Math.floor((ts%3600)/60), s = ts%60;
+  return h>0?`${h}h ${m}m ${s}s`:`${m}m ${s}s`;
+}
+function parseTime(str) {
+  if (!str) return null;
+  const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let h = parseInt(match[1]); const m = parseInt(match[2]), ap=(match[3]||'').toUpperCase();
+  if (ap==='PM'&&h!==12) h+=12;
+  if (ap==='AM'&&h===12) h=0;
+  return h*60+m;
+}
+function diffLabel(r) {
+  if (r<=3) return {text:'💀 HARD',color:'#ef4444'};
+  if (r<=6) return {text:'🔥 MOD',color:'#f97316'};
+  if (r<=9) return {text:'😊 EASY',color:'#eab308'};
+  return {text:'🌟 CRUISE',color:'#10b981'};
+}
+function runnerColor(team, runner) {
+  if (!team||!runner) return '#888';
+  const idx = (team.runners||[]).indexOf(runner);
+  return idx>=0 ? COLORS[idx] : '#888';
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2500);
+}
+
+// ── SCHEDULE COMPUTE ──
+function computeSchedule(team) {
+  if (!team) return [];
+  const runners = team.runners || [];
+  const assignments = team.legAssignments || {};
+  const paces = team.paces || {};
+  const actuals = team.actuals || {};
+  let cursor = START;
+
+  return LEG_DATA.map(leg => {
+    const runner = assignments[leg.leg] || runners[0] || '';
+    const pace = paces[runner] || 397;
+    const predMins = leg.miles * pace / 60;
+    const startMin = cursor;
+    const predFinish = cursor + predMins;
+    const actualFinish = actuals[leg.leg] != null ? actuals[leg.leg] : null;
+    const effFinish = actualFinish !== null ? actualFinish : predFinish;
+    cursor = effFinish;
+    return { ...leg, runner, pace, predMins, startMin, predFinish, actualFinish, effFinish };
+  });
+}
+
+// ── FIREBASE OPS ──
+async function updateTeam(data) {
+  if (!currentTeamId) return;
+  try {
+    await db.collection('teams').doc(currentTeamId).update(data);
+  } catch(e) { showToast('Sync error — retrying'); }
+}
+
+// ── HOME ──
+function showHome() {
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  currentTeamId = null; currentTeam = null;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('home-page').style.display = 'block';
+  document.getElementById('setup-page').style.display = 'none';
+  document.getElementById('tracker-page').style.display = 'none';
+  loadTeams();
+}
+
+function loadTeams() {
+  db.collection('teams').orderBy('createdAt','desc').onSnapshot(snap => {
+    allTeams = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderTeamsList();
+  });
+}
+
+function renderTeamsList() {
+  const el = document.getElementById('teams-list');
+  if (!allTeams.length) {
+    el.innerHTML = '<div class="no-teams">No teams yet — be the first!</div>';
+    return;
+  }
+  el.innerHTML = allTeams.map(t => {
+    const runners = (t.runners||[]).filter(Boolean);
+    const completed = Object.values(t.completed||{}).filter(Boolean).length;
+    return `
+      <div class="team-card" onclick="openTeam('${t.id}')">
+        <div>
+          <div class="team-name">${t.name||'Unnamed Team'}</div>
+          <div class="team-meta">${runners.join(' • ')} ${completed>0?`• ${completed}/12 legs done`:''}</div>
+        </div>
+        <div class="team-arrow">→</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── SETUP ──
+function showSetup(teamData) {
+  document.getElementById('home-page').style.display = 'none';
+  document.getElementById('setup-page').style.display = 'block';
+  document.getElementById('tracker-page').style.display = 'none';
+  buildSetupForm(teamData);
+}
+
+function showSetupEdit() {
+  showSetup(currentTeam);
+}
+
+function buildSetupForm(teamData) {
+  const runners = teamData?.runners || ['','','','','',''];
+  const assignments = teamData?.legAssignments || {};
+  if (teamData?.name) document.getElementById('team-name-input').value = teamData.name;
+  else document.getElementById('team-name-input').value = '';
+
+  // Runner inputs
+  const rg = document.getElementById('runner-inputs');
+  rg.innerHTML = runners.map((r,i) => `
+    <div class="runner-input-wrap">
+      <div class="runner-dot" style="background:${COLORS[i]}"></div>
+      <input class="runner-input" id="runner-${i}" placeholder="Runner ${i+1}" value="${r}" oninput="refreshLegDropdowns()" />
+    </div>
+  `).join('');
+
+  // Leg assign
+  buildLegAssignRows(runners, assignments);
+}
+
+function getRunnerInputs() {
+  return Array.from({length:6},(_,i)=>document.getElementById(`runner-${i}`)?.value?.trim()||'');
+}
+
+function refreshLegDropdowns() {
+  const runners = getRunnerInputs();
+  const rows = document.querySelectorAll('.leg-assign-select');
+  rows.forEach(sel => {
+    const currentVal = sel.value;
+    sel.innerHTML = runners.filter(Boolean).map(r=>`<option value="${r}" ${r===currentVal?'selected':''}>${r}</option>`).join('');
+  });
+}
+
+function buildLegAssignRows(runners, assignments) {
+  const validRunners = runners.filter(Boolean);
+  const el = document.getElementById('leg-assign-rows');
+  el.innerHTML = LEG_DATA.map(leg => {
+    const dl = diffLabel(leg.diffRating);
+    const assigned = assignments[leg.leg] || validRunners[0] || '';
+    return `
+      <div class="leg-assign-row">
+        <div class="leg-num-badge">${leg.leg}</div>
+        <div class="leg-info">${leg.miles}mi • <span style="color:${dl.color}">${dl.text}</span></div>
+        <select class="leg-assign-select" id="assign-${leg.leg}">
+          ${validRunners.map(r=>`<option value="${r}" ${r===assigned?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }).join('');
+}
+
+async function saveTeam() {
+  const name = document.getElementById('team-name-input').value.trim();
+  if (!name) { showToast('Please enter a team name'); return; }
+  const runners = getRunnerInputs().filter(Boolean);
+  if (runners.length < 2) { showToast('Please enter at least 2 runners'); return; }
+
+  const legAssignments = {};
+  LEG_DATA.forEach(leg => {
+    legAssignments[leg.leg] = document.getElementById(`assign-${leg.leg}`)?.value || runners[0];
+  });
+
+  // Default paces
+  const paces = {};
+  runners.forEach(r => { paces[r] = 397; });
+
+  const data = {
+    name, runners,
+    legAssignments,
+    paces,
+    actuals: currentTeam?.actuals || {},
+    completed: currentTeam?.completed || {},
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+  };
+
+  if (currentTeamId) {
+    // Editing existing
+    await db.collection('teams').doc(currentTeamId).update(data);
+    showToast('Team updated!');
+    openTeam(currentTeamId);
+  } else {
+    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    const ref = await db.collection('teams').add(data);
+    showToast('Team created!');
+    openTeam(ref.id);
+  }
+}
+
+// ── TRACKER ──
+function openTeam(teamId) {
+  if (unsubscribe) unsubscribe();
+  currentTeamId = teamId;
+  document.getElementById('home-page').style.display = 'none';
+  document.getElementById('setup-page').style.display = 'none';
+  document.getElementById('tracker-page').style.display = 'block';
+  document.getElementById('loading').style.display = 'none';
+
+  unsubscribe = db.collection('teams').doc(teamId).onSnapshot(snap => {
+    if (!snap.exists) { showHome(); return; }
+    currentTeam = { id: snap.id, ...snap.data() };
+    renderTracker();
+  });
+}
+
+function renderTracker() {
+  const team = currentTeam;
+  if (!team) return;
+  document.getElementById('tracker-team-name').textContent = team.name || 'Your Team';
+  const sched = computeSchedule(team);
+  const finalFinish = sched[sched.length-1].effFinish;
+  document.getElementById('est-finish').textContent = minutesToTime(finalFinish);
+
+  const completedCount = Object.values(team.completed||{}).filter(Boolean).length;
+  const badge = document.getElementById('completed-badge');
+  const pw = document.getElementById('progress-wrap');
+  if (completedCount > 0) {
+    badge.style.display = ''; badge.textContent = `✅ ${completedCount}/12 done`;
+    pw.style.display = '';
+    document.getElementById('progress-text').textContent = `${completedCount}/12 LEGS`;
+    document.getElementById('progress-fill').style.width = `${(completedCount/12)*100}%`;
+  } else { badge.style.display = 'none'; pw.style.display = 'none'; }
+
+  if (currentView === 'schedule') renderScheduleView(sched);
+  if (currentView === 'runners') renderRunnersView(sched);
+  if (currentView === 'stats') renderStatsView(sched);
+}
+
+// ── SCHEDULE VIEW ──
+function renderScheduleView(sched) {
+  const team = currentTeam;
+  const el = document.getElementById('view-schedule');
+  el.innerHTML = sched.map(leg => {
+    const color = runnerColor(team, leg.runner);
+    const isDone = !!(team.completed||{})[leg.leg];
+    const hasActual = (team.actuals||{})[leg.leg] != null;
+    const dl = diffLabel(leg.diffRating);
+    const actualInputVal = (team.actualInputs||{})[leg.leg] || '';
+
+    return `
+      <div class="leg-card ${isDone?'done':''}" id="lc-${leg.leg}" style="border-left:4px solid ${color}">
+        <div class="leg-row" onclick="toggleLeg(${leg.leg})">
+          <div class="leg-num-circle" style="background:${color}22;border:2px solid ${color};color:${color}">${leg.leg}</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:${color}">${leg.runner}</div>
+            <div style="font-size:11px;color:#555;font-family:monospace">${leg.miles} mi</div>
+          </div>
+          <div>
+            <div class="col-label">START</div>
+            <div class="col-val">${minutesToTime(leg.startMin)}</div>
+          </div>
+          <div>
+            <div class="col-label">${hasActual?'ACTUAL':'PRED.'} FINISH</div>
+            <div class="col-val" style="color:${hasActual?'#10b981':'#e8e4d9'}">${minutesToTime(leg.effFinish)}</div>
+          </div>
+          <div class="diff-col">
+            <div class="diff-text" style="color:${dl.color}">${dl.text}</div>
+            <div class="dur-text">${formatDur(leg.predMins)}</div>
+          </div>
+          <div style="color:#444;font-size:14px;text-align:right" id="tog-${leg.leg}">▼</div>
+        </div>
+        <div class="leg-detail ${expandedLeg===leg.leg?'open':''}" id="det-${leg.leg}">
+          <div>
+            <div class="detail-section-label">LEG DETAILS</div>
+            ${[
+              ['Distance', leg.miles+' miles'],
+              ['Ascent', leg.ascent+' ft'],
+              ['Descent', leg.descent+' ft'],
+              ['Diff. Rating', leg.diffRating+'/12'],
+              ['Runner', `<span style="color:${color}">${leg.runner}</span>`],
+              ['Pred. Pace', secondsToPace(leg.pace)+'/mi'],
+              ['Pred. Time', formatDur(leg.predMins)],
+            ].map(([k,v])=>`<div class="stat-row"><span class="stat-key">${k}</span><span class="stat-val">${v}</span></div>`).join('')}
+          </div>
+          <div>
+            <div class="detail-section-label">${(leg.runner||'').toUpperCase()} PACE: ${secondsToPace(leg.pace)}/mi</div>
+            <input type="range" min="330" max="540" step="5" value="${leg.pace}"
+              style="accent-color:${color}"
+              oninput="onPaceSlider('${leg.runner}', this.value, ${leg.leg})" />
+            <div class="range-labels"><span>5:30</span><span>9:00</span></div>
+
+            <div class="field-label">ACTUAL FINISH TIME</div>
+            <input type="text" class="time-input ${hasActual?'has-val':''}"
+              placeholder="e.g. 10:31 AM"
+              value="${actualInputVal}"
+              oninput="onActualInput(${leg.leg}, this.value)" />
+            <div class="confirm-msg ${hasActual?'show':''}">✓ Actual set — pace & downstream updated</div>
+
+            <div class="action-row">
+              <button class="complete-btn ${isDone?'done':''}" onclick="toggleComplete(${leg.leg})">
+                ${isDone?'✓ COMPLETE':'MARK COMPLETE'}
+              </button>
+              <button class="reassign-btn" onclick="openReassign(${leg.leg})">👤 Reassign</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleLeg(legNum) {
+  expandedLeg = expandedLeg === legNum ? null : legNum;
+  const sched = computeSchedule(currentTeam);
+  renderScheduleView(sched);
+  if (expandedLeg) {
+    setTimeout(()=>{
+      const el = document.getElementById(`lc-${expandedLeg}`);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }, 50);
+  }
+}
+
+let paceDebounce = {};
+function onPaceSlider(runner, val, fromLeg) {
+  // Update label immediately
+  const det = document.getElementById(`det-${fromLeg}`);
+  if (det) {
+    const lbl = det.querySelector('.detail-section-label');
+    if (lbl) lbl.textContent = `${runner.toUpperCase()} PACE: ${secondsToPace(Number(val))}/mi`;
+  }
+  clearTimeout(paceDebounce[runner]);
+  paceDebounce[runner] = setTimeout(async () => {
+    const newPaces = { ...(currentTeam.paces||{}), [runner]: Number(val) };
+    await updateTeam({ paces: newPaces });
+  }, 300);
+}
+
+let actualDebounce = {};
+function onActualInput(legNum, val) {
+  clearTimeout(actualDebounce[legNum]);
+  actualDebounce[legNum] = setTimeout(async () => {
+    const parsed = parseTime(val);
+    const newActualInputs = { ...(currentTeam.actualInputs||{}), [legNum]: val };
+    const newActuals = { ...(currentTeam.actuals||{}) };
+
+    if (parsed !== null) {
+      newActuals[legNum] = parsed;
+      // Back-calculate pace for this runner
+      const sched = computeSchedule(currentTeam);
+      const leg = sched.find(l=>l.leg===legNum);
+      if (leg) {
+        const actualMins = parsed - leg.startMin;
+        if (actualMins > 0) {
+          const newPacePerMile = (actualMins * 60) / leg.miles;
+          const clampedPace = Math.min(540, Math.max(330, Math.round(newPacePerMile/5)*5));
+          const newPaces = { ...(currentTeam.paces||{}), [leg.runner]: clampedPace };
+          await updateTeam({ actuals: newActuals, actualInputs: newActualInputs, paces: newPaces });
+          showToast(`${leg.runner}'s pace updated to ${secondsToPace(clampedPace)}/mi`);
+          return;
+        }
+      }
+      await updateTeam({ actuals: newActuals, actualInputs: newActualInputs });
+    } else if (val === '') {
+      delete newActuals[legNum];
+      await updateTeam({ actuals: newActuals, actualInputs: newActualInputs });
+    }
+  }, 600);
+}
+
+async function toggleComplete(legNum) {
+  const newCompleted = { ...(currentTeam.completed||{}), [legNum]: !(currentTeam.completed||{})[legNum] };
+  await updateTeam({ completed: newCompleted });
+}
+
+// ── REASSIGN ──
+function openReassign(legNum) {
+  const team = currentTeam;
+  const runners = (team.runners||[]).filter(Boolean);
+  const current = (team.legAssignments||{})[legNum];
+  document.getElementById('reassign-title').textContent = `Reassign Leg ${legNum}`;
+  document.getElementById('reassign-options').innerHTML = runners.map(r => `
+    <button class="modal-btn" onclick="doReassign(${legNum},'${r}')"
+      style="background:${r===current?runnerColor(team,r)+'33':'#1a1a24'};color:${r===current?runnerColor(team,r):'#888'};border:1px solid ${r===current?runnerColor(team,r):'transparent'}">
+      ${r===current?'✓ ':''} ${r}
+    </button>
+  `).join('');
+  document.getElementById('reassign-modal').classList.add('open');
+}
+
+async function doReassign(legNum, runner) {
+  closeModal();
+  const newAssign = { ...(currentTeam.legAssignments||{}), [legNum]: runner };
+  // Give this runner the default pace if not set
+  const newPaces = { ...(currentTeam.paces||{}) };
+  if (!newPaces[runner]) newPaces[runner] = 397;
+  await updateTeam({ legAssignments: newAssign, paces: newPaces });
+  showToast(`Leg ${legNum} → ${runner}`);
+}
+
+function closeModal() {
+  document.getElementById('reassign-modal').classList.remove('open');
+}
+
+// ── RUNNERS VIEW ──
+function renderRunnersView(sched) {
+  const team = currentTeam;
+  const runners = (team.runners||[]).filter(Boolean);
+  const el = document.getElementById('view-runners');
+  el.innerHTML = runners.map((runner, i) => {
+    const color = COLORS[i];
+    const legs = sched.filter(l=>l.runner===runner);
+    const totalMi = legs.reduce((a,b)=>a+b.miles,0);
+    const totalTime = legs.reduce((a,b)=>a+b.predMins,0);
+    const pace = (team.paces||{})[runner] || 397;
+    return `
+      <div class="runner-card" style="border-left:4px solid ${color}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+          <div>
+            <div class="runner-name-big" style="color:${color}">${runner}</div>
+            <div class="runner-sub">LEGS ${legs.map(l=>l.leg).join(' & ')} • ${totalMi.toFixed(2)} MI • ${formatDur(totalTime)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:#555;font-family:monospace">PACE</div>
+            <div class="runner-pace-display" id="rpace-${runner}">${secondsToPace(pace)}/mi</div>
+          </div>
+        </div>
+        <input type="range" min="330" max="540" step="5" value="${pace}"
+          style="accent-color:${color};width:100%;margin-bottom:4px"
+          oninput="onRunnerPaceSlider('${runner}', this.value)" />
+        <div class="range-labels" style="margin-bottom:16px"><span>5:30/mi (fast)</span><span>9:00/mi (easy)</span></div>
+        <div class="runner-legs-grid" style="grid-template-columns:repeat(${Math.max(1,legs.length)},1fr)">
+          ${legs.map(l=>`
+            <div class="rleg-card" style="border:1px solid ${color}33">
+              <div style="font-size:10px;color:#555;font-family:monospace">LEG ${l.leg}</div>
+              <div style="font-size:13px;font-weight:600;margin-top:2px">${l.miles} mi</div>
+              <div style="font-size:11px;color:#888;margin-top:4px">${minutesToTime(l.startMin)} → ${minutesToTime(l.effFinish)}</div>
+              <div style="font-size:11px;color:#555">${formatDur(l.predMins)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+let runnerPaceDebounce = {};
+function onRunnerPaceSlider(runner, val) {
+  const el = document.getElementById(`rpace-${runner}`);
+  if (el) el.textContent = secondsToPace(Number(val))+'/mi';
+  clearTimeout(runnerPaceDebounce[runner]);
+  runnerPaceDebounce[runner] = setTimeout(async () => {
+    const newPaces = { ...(currentTeam.paces||{}), [runner]: Number(val) };
+    await updateTeam({ paces: newPaces });
+  }, 300);
+}
+
+// ── STATS VIEW ──
+function renderStatsView(sched) {
+  const team = currentTeam;
+  const runners = (team.runners||[]).filter(Boolean);
+  const finalFinish = sched[sched.length-1].effFinish;
+  const completedCount = Object.values(team.completed||{}).filter(Boolean).length;
+  const totalAscent = LEG_DATA.reduce((a,b)=>a+b.ascent,0);
+  const totalDescent = LEG_DATA.reduce((a,b)=>a+b.descent,0);
+  const totalMiles = LEG_DATA.reduce((a,b)=>a+b.miles,0);
+
+  const runnerSummary = runners.map((r,i) => {
+    const legs = sched.filter(l=>l.runner===r);
+    return { runner:r, color:COLORS[i], totalMi:legs.reduce((a,b)=>a+b.miles,0), totalTime:legs.reduce((a,b)=>a+b.predMins,0), pace:(team.paces||{})[r]||397 };
+  }).sort((a,b)=>b.totalMi-a.totalMi);
+
+  const hardest = [...sched].sort((a,b)=>a.diffRating-b.diffRating).slice(0,4);
+
+  document.getElementById('view-stats').innerHTML = `
+    <div class="stat-section">
+      <div style="font-size:10px;letter-spacing:3px;color:#f97316;font-family:monospace;margin-bottom:16px">RACE OVERVIEW</div>
+      <div class="overview-grid">
+        ${[
+          ['Total Miles', totalMiles.toFixed(2)],
+          ['Legs','12'],['Runners', runners.length],
+          ['Start','8:30 AM'],
+          ['Est. Finish', minutesToTime(finalFinish)],
+          ['Total Time', formatDur(finalFinish-START)],
+          ['Total Ascent', totalAscent.toLocaleString()+' ft'],
+          ['Total Descent', totalDescent.toLocaleString()+' ft'],
+          ['Completed', completedCount+'/12'],
+        ].map(([k,v])=>`<div class="overview-cell"><div class="overview-key">${k}</div><div class="overview-val">${v}</div></div>`).join('')}
+      </div>
+    </div>
+
+    <div class="stat-section">
+      <div style="font-size:10px;letter-spacing:3px;color:#f97316;font-family:monospace;margin-bottom:16px">RUNNER BREAKDOWN</div>
+      ${runnerSummary.map(({runner,color,totalMi,totalTime,pace})=>`
+        <div class="bar-row">
+          <div style="font-weight:700;color:${color}">${runner}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(totalMi/17)*100}%;background:${color}"></div></div>
+          <div style="font-size:13px;font-family:monospace;text-align:right">${totalMi.toFixed(2)} mi</div>
+          <div style="font-size:12px;font-family:monospace;color:#555;text-align:right">${secondsToPace(pace)}/mi</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="stat-section">
+      <div style="font-size:10px;letter-spacing:3px;color:#f97316;font-family:monospace;margin-bottom:16px">HARDEST LEGS</div>
+      ${hardest.map(leg=>`
+        <div class="hard-row">
+          <span style="color:${runnerColor(team,leg.runner)}">Leg ${leg.leg} — ${leg.runner}</span>
+          <span style="font-family:monospace;color:#ef4444">Rating ${leg.diffRating}/12 • ${leg.miles} mi</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <button class="reset-btn" onclick="resetTeamData()">RESET RACE DATA (KEEP TEAM)</button>
+  `;
+}
+
+async function resetTeamData() {
+  if (!confirm('Reset all actuals, paces, and completions? Team setup will be kept.')) return;
+  const defaultPaces = {};
+  (currentTeam.runners||[]).forEach(r=>{ defaultPaces[r]=397; });
+  await updateTeam({ actuals:{}, actualInputs:{}, completed:{}, paces: defaultPaces });
+  showToast('Race data reset!');
+}
+
+// ── VIEW SWITCHING ──
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+  ['schedule','runners','stats'].forEach(v=>{
+    document.getElementById(`view-${v}`).style.display = v===view?'':'none';
+  });
+  const sched = computeSchedule(currentTeam);
+  if (view==='schedule') renderScheduleView(sched);
+  if (view==='runners') renderRunnersView(sched);
+  if (view==='stats') renderStatsView(sched);
+}
+
+// ── INIT ──
+window.addEventListener('load', () => {
+  document.getElementById('loading').style.display = 'flex';
+  // Test Firestore connection
+  db.collection('teams').limit(1).get()
+    .then(() => showHome())
+    .catch(() => {
+      document.getElementById('loading').innerHTML = `
+        <div style="text-align:center;padding:20px;color:#ef4444;font-family:monospace">
+          <div style="font-size:24px;margin-bottom:12px">⚠️</div>
+          <div>Could not connect to database.</div>
+          <div style="font-size:11px;color:#666;margin-top:8px">Check Firestore is enabled in Firebase console.</div>
+        </div>
+      `;
+    });
+});
+</script>
+</body>
+</html>
