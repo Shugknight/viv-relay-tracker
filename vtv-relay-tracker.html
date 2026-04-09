@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ville to Ville — Relay Tracker</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a0f;
+      color: #e8e4d9;
+      font-family: Georgia, serif;
+      padding-bottom: 80px;
+    }
+
+    .bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 20% 20%, rgba(249,115,22,0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 80%, rgba(16,185,129,0.06) 0%, transparent 50%),
+        repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.015) 40px, rgba(255,255,255,0.015) 41px),
+        repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,0.015) 40px, rgba(255,255,255,0.015) 41px);
+    }
+
+    .wrap { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 16px; }
+
+    /* Header */
+    .header { text-align: center; padding: 36px 0 24px; }
+    .header-eyebrow { font-size: 11px; letter-spacing: 6px; color: #f97316; font-family: monospace; text-transform: uppercase; margin-bottom: 8px; }
+    .header-title { font-size: clamp(28px, 6vw, 52px); font-weight: 900; color: #e8e4d9; line-height: 1; text-shadow: 0 0 40px rgba(249,115,22,0.3); }
+    .header-meta { margin-top: 12px; display: flex; justify-content: center; gap: 24px; font-size: 13px; color: #888; flex-wrap: wrap; }
+    .header-meta strong { color: #e8e4d9; }
+
+    /* Nav */
+    .nav { display: flex; gap: 4px; margin-bottom: 24px; background: #111118; border-radius: 10px; padding: 4px; }
+    .nav-btn { flex: 1; padding: 10px 0; border: none; border-radius: 7px; cursor: pointer; font-family: monospace; font-size: 13px; letter-spacing: 1px; background: transparent; color: #888; font-weight: 400; transition: all 0.2s; }
+    .nav-btn.active { background: #f97316; color: #000; font-weight: 700; }
+
+    /* Progress */
+    .progress-wrap { margin-bottom: 20px; }
+    .progress-labels { display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-bottom: 4px; font-family: monospace; }
+    .progress-bar { height: 6px; background: #1a1a24; border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #f97316, #10b981); transition: width 0.4s; }
+
+    /* Views */
+    .view { display: none; flex-direction: column; gap: 8px; }
+    .view.active { display: flex; }
+    #view-runners, #view-stats { gap: 16px; }
+
+    /* Leg card */
+    .leg-card {
+      background: #111118;
+      border: 1px solid #1e1e2e;
+      border-radius: 10px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .leg-card.done { background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.3); }
+
+    .leg-row {
+      display: grid;
+      grid-template-columns: 40px 80px 1fr 1fr 1fr 30px;
+      align-items: center;
+      padding: 14px 16px;
+      cursor: pointer;
+      gap: 8px;
+    }
+    @media (max-width: 500px) {
+      .leg-row { grid-template-columns: 36px 70px 1fr 1fr 36px; gap: 6px; padding: 12px; }
+      .leg-row .diff-col { display: none; }
+    }
+
+    .leg-num {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700;
+    }
+    .leg-runner-name { font-size: 13px; font-weight: 700; }
+    .leg-miles { font-size: 11px; color: #555; font-family: monospace; }
+    .leg-label { font-size: 11px; color: #555; font-family: monospace; margin-bottom: 2px; }
+    .leg-time { font-size: 14px; font-weight: 600; }
+    .leg-diff { font-size: 10px; font-family: monospace; font-weight: 700; text-align: center; }
+    .leg-dur { font-size: 11px; color: #555; text-align: center; }
+    .leg-toggle { color: #444; font-size: 14px; text-align: right; }
+
+    /* Expanded panel */
+    .leg-detail {
+      display: none;
+      border-top: 1px solid #1e1e2e;
+      padding: 16px;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .leg-detail.open { display: grid; }
+    @media (max-width: 500px) { .leg-detail { grid-template-columns: 1fr; } }
+
+    .detail-label { font-size: 10px; letter-spacing: 3px; color: #555; font-family: monospace; margin-bottom: 8px; }
+    .stat-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+    .stat-key { color: #666; }
+    .stat-val { font-family: monospace; color: #e8e4d9; }
+
+    .pace-label { font-size: 10px; letter-spacing: 3px; color: #555; font-family: monospace; margin-bottom: 8px; }
+    input[type=range] { width: 100%; cursor: pointer; }
+    .range-labels { display: flex; justify-content: space-between; font-size: 10px; color: #444; font-family: monospace; margin-top: 2px; }
+
+    .actual-label { font-size: 10px; letter-spacing: 3px; color: #555; font-family: monospace; margin-bottom: 6px; margin-top: 12px; }
+    .actual-input {
+      width: 100%; background: #0a0a0f;
+      border: 1px solid #2a2a3e; border-radius: 6px;
+      padding: 8px 10px; color: #e8e4d9;
+      font-family: monospace; font-size: 14px;
+    }
+    .actual-input.has-val { border-color: #10b981; }
+    .actual-confirm { font-size: 11px; color: #10b981; margin-top: 4px; display: none; }
+    .actual-confirm.show { display: block; }
+
+    .complete-btn {
+      width: 100%; margin-top: 12px; padding: 10px;
+      border-radius: 7px; border: none; cursor: pointer;
+      font-family: monospace; font-size: 12px; font-weight: 700;
+      letter-spacing: 1px; background: #1a1a24; color: #888;
+      transition: all 0.2s;
+    }
+    .complete-btn.done { background: #10b981; color: #000; }
+
+    /* Runner cards */
+    .runner-card {
+      background: #111118; border: 1px solid #1e1e2e;
+      border-radius: 10px; padding: 20px;
+    }
+    .runner-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .runner-name { font-size: 22px; font-weight: 700; }
+    .runner-meta { font-size: 12px; color: #555; font-family: monospace; }
+    .runner-pace-label { font-size: 11px; color: #555; font-family: monospace; }
+    .runner-pace-val { font-size: 20px; font-family: monospace; color: #e8e4d9; }
+    .runner-legs { display: grid; gap: 8px; margin-top: 16px; }
+    .runner-leg-card {
+      background: #0a0a0f; border-radius: 8px; padding: 12px;
+    }
+    .rleg-num { font-size: 10px; color: #555; font-family: monospace; }
+    .rleg-miles { font-size: 13px; font-weight: 600; margin-top: 2px; }
+    .rleg-times { font-size: 11px; color: #888; margin-top: 4px; }
+    .rleg-dur { font-size: 11px; color: #555; }
+
+    /* Stats */
+    .stat-section { background: #111118; border: 1px solid #1e1e2e; border-radius: 10px; padding: 20px; }
+    .section-label { font-size: 10px; letter-spacing: 3px; color: #f97316; font-family: monospace; margin-bottom: 16px; }
+    .overview-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    @media (max-width: 400px) { .overview-grid { grid-template-columns: 1fr 1fr; } }
+    .overview-cell { background: #0a0a0f; border-radius: 8px; padding: 12px; }
+    .overview-key { font-size: 10px; color: #555; font-family: monospace; }
+    .overview-val { font-size: 16px; font-weight: 700; color: #e8e4d9; margin-top: 4px; }
+
+    .runner-bar-row { display: grid; grid-template-columns: 90px 1fr 70px 70px 70px; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #1a1a24; }
+    @media (max-width: 500px) { .runner-bar-row { grid-template-columns: 70px 1fr 60px; } .runner-bar-row .bar-time, .runner-bar-row .bar-pace { display: none; } }
+    .bar-track { position: relative; height: 6px; background: #1a1a24; border-radius: 3px; overflow: hidden; }
+    .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+    .bar-miles { font-size: 13px; font-family: monospace; color: #e8e4d9; text-align: right; }
+    .bar-time { font-size: 13px; font-family: monospace; color: #888; text-align: right; }
+    .bar-pace { font-size: 12px; font-family: monospace; color: #555; text-align: right; }
+
+    .hard-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a1a24; font-size: 13px; }
+
+    .reset-btn {
+      padding: 12px; border-radius: 8px; border: 1px solid #2a2a3e;
+      background: transparent; color: #666; cursor: pointer;
+      font-family: monospace; font-size: 12px; letter-spacing: 1px; width: 100%;
+    }
+    .reset-btn:hover { border-color: #ef4444; color: #ef4444; }
+  </style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="wrap">
+
+  <div class="header">
+    <div class="header-eyebrow">VILLE TO VILLE • CRAFT BREW RELAY</div>
+    <h1 class="header-title">RACE TRACKER</h1>
+    <div class="header-meta">
+      <span>🏁 Start: <strong>8:30 AM</strong></span>
+      <span>📍 12 Legs</span>
+      <span>🏃 72.54 miles</span>
+      <span>🏆 Est. Finish: <strong id="est-finish">—</strong></span>
+      <span id="completed-count" style="display:none"></span>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="nav-btn active" data-view="schedule">📋 Schedule</button>
+    <button class="nav-btn" data-view="runners">🏃 Runners</button>
+    <button class="nav-btn" data-view="stats">📊 Stats</button>
+  </div>
+
+  <div class="progress-wrap" id="progress-wrap" style="display:none">
+    <div class="progress-labels"><span>RACE PROGRESS</span><span id="progress-text">0/12 LEGS</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div class="view active" id="view-schedule"></div>
+
+  <!-- RUNNERS -->
+  <div class="view" id="view-runners"></div>
+
+  <!-- STATS -->
+  <div class="view" id="view-stats"></div>
+
+</div>
+
+<script>
+const LEGS = [
+  { leg:1,  runner:"GFB",    miles:6.0,  distRating:6,  ascent:931,  descent:833,  diffRating:3  },
+  { leg:2,  runner:"Miles",  miles:5.84, distRating:7,  ascent:347,  descent:495,  diffRating:7  },
+  { leg:3,  runner:"Cat",    miles:6.45, distRating:5,  ascent:521,  descent:534,  diffRating:6  },
+  { leg:4,  runner:"Chris",  miles:7.90, distRating:3,  ascent:574,  descent:593,  diffRating:2  },
+  { leg:5,  runner:"Blake",  miles:5.45, distRating:8,  ascent:367,  descent:269,  diffRating:9  },
+  { leg:6,  runner:"Cat",    miles:4.64, distRating:9,  ascent:492,  descent:643,  diffRating:8  },
+  { leg:7,  runner:"Chris",  miles:3.53, distRating:12, ascent:492,  descent:259,  diffRating:10 },
+  { leg:8,  runner:"Ryland", miles:8.81, distRating:2,  ascent:629,  descent:1643, diffRating:4  },
+  { leg:9,  runner:"Miles",  miles:8.83, distRating:1,  ascent:495,  descent:741,  diffRating:1  },
+  { leg:10, runner:"GFB",    miles:6.71, distRating:4,  ascent:567,  descent:485,  diffRating:5  },
+  { leg:11, runner:"Blake",  miles:4.44, distRating:10, ascent:232,  descent:328,  diffRating:11 },
+  { leg:12, runner:"Ryland", miles:3.94, distRating:11, ascent:124,  descent:183,  diffRating:12 },
+];
+
+const RUNNERS = ["GFB","Miles","Cat","Chris","Blake","Ryland"];
+
+const COLORS = {
+  GFB:"#f97316", Miles:"#3b82f6", Cat:"#ec4899",
+  Chris:"#10b981", Blake:"#8b5cf6", Ryland:"#f59e0b"
+};
+
+const START = 8*60+30;
+const STORAGE_KEY = "vtv_relay_2026";
+
+let state = {
+  paces: { GFB:397, Miles:397, Cat:397, Chris:397, Blake:397, Ryland:397 },
+  actuals: {},
+  actualInputs: {},
+  completed: {}
+};
+
+function load() {
+  try { const r = localStorage.getItem(STORAGE_KEY); if (r) state = JSON.parse(r); } catch {}
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+
+function secondsToPace(s) {
+  const m = Math.floor(s/60), r = Math.round(s%60);
+  return `${m}:${r.toString().padStart(2,'0')}`;
+}
+function minutesToTime(mins) {
+  const t = Math.round(mins), h = Math.floor(t/60), m = t%60;
+  const ap = h>=12?'PM':'AM', h12 = h%12===0?12:h%12;
+  return `${h12}:${m.toString().padStart(2,'0')} ${ap}`;
+}
+function formatDur(mins) {
+  const ts = Math.round(mins*60), h = Math.floor(ts/3600), m = Math.floor((ts%3600)/60), s = ts%60;
+  return h>0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`;
+}
+function parseTime(str) {
+  if (!str) return null;
+  const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let h = parseInt(match[1]); const m = parseInt(match[2]), ap = (match[3]||'').toUpperCase();
+  if (ap==='PM' && h!==12) h+=12;
+  if (ap==='AM' && h===12) h=0;
+  return h*60+m;
+}
+function diffLabel(r) {
+  if (r<=3) return {text:'💀 HARD', color:'#ef4444'};
+  if (r<=6) return {text:'🔥 MOD',  color:'#f97316'};
+  if (r<=9) return {text:'😊 EASY', color:'#eab308'};
+  return {text:'🌟 CRUISE', color:'#10b981'};
+}
+
+function computeSchedule() {
+  let cursor = START;
+  return LEGS.map(leg => {
+    const pace = state.paces[leg.runner] || 397;
+    const predMins = leg.miles * pace / 60;
+    const startMin = cursor;
+    const predFinish = cursor + predMins;
+    const actualFinish = state.actuals[leg.leg] != null ? state.actuals[leg.leg] : null;
+    const effFinish = actualFinish !== null ? actualFinish : predFinish;
+    cursor = effFinish;
+    return { ...leg, startMin, predMins, predFinish, actualFinish, effFinish, pace };
+  });
+}
+
+// ── RENDER SCHEDULE ──
+function renderSchedule() {
+  const sched = computeSchedule();
+  const el = document.getElementById('view-schedule');
+  el.innerHTML = '';
+
+  sched.forEach(leg => {
+    const color = COLORS[leg.runner];
+    const isDone = !!state.completed[leg.leg];
+    const hasActual = state.actuals[leg.leg] != null;
+    const dl = diffLabel(leg.diffRating);
+
+    const card = document.createElement('div');
+    card.className = 'leg-card' + (isDone ? ' done' : '');
+    card.id = `leg-card-${leg.leg}`;
+    card.style.borderLeft = `4px solid ${color}`;
+
+    card.innerHTML = `
+      <div class="leg-row" onclick="toggleLeg(${leg.leg})">
+        <div class="leg-num" style="background:${color}22;border:2px solid ${color};color:${color}">${leg.leg}</div>
+        <div>
+          <div class="leg-runner-name" style="color:${color}">${leg.runner}</div>
+          <div class="leg-miles">${leg.miles} mi</div>
+        </div>
+        <div>
+          <div class="leg-label">START</div>
+          <div class="leg-time" id="start-${leg.leg}">${minutesToTime(leg.startMin)}</div>
+        </div>
+        <div>
+          <div class="leg-label">${hasActual?'ACTUAL':'PRED.'} FINISH</div>
+          <div class="leg-time" id="finish-${leg.leg}" style="color:${hasActual?'#10b981':'#e8e4d9'}">${minutesToTime(leg.effFinish)}</div>
+        </div>
+        <div class="diff-col">
+          <div class="leg-diff" style="color:${dl.color}" id="diff-label-${leg.leg}">${dl.text}</div>
+          <div class="leg-dur" id="dur-${leg.leg}">${formatDur(leg.predMins)}</div>
+        </div>
+        <div class="leg-toggle" id="toggle-${leg.leg}">▼</div>
+      </div>
+      <div class="leg-detail" id="detail-${leg.leg}">
+        <div>
+          <div class="detail-label">LEG DETAILS</div>
+          ${[
+            ['Distance', leg.miles+' miles'],
+            ['Ascent', leg.ascent+' ft'],
+            ['Descent', leg.descent+' ft'],
+            ['Dist. Rating', leg.distRating+'/12'],
+            ['Diff. Rating', leg.diffRating+'/12'],
+            ['Current Pace', `<span id="pace-disp-${leg.leg}">${secondsToPace(leg.pace)}</span>/mi`],
+            ['Pred. Time', `<span id="pred-dur-${leg.leg}">${formatDur(leg.predMins)}</span>`],
+          ].map(([k,v])=>`<div class="stat-row"><span class="stat-key">${k}</span><span class="stat-val">${v}</span></div>`).join('')}
+        </div>
+        <div>
+          <div class="pace-label" id="pace-label-${leg.leg}">${leg.runner.toUpperCase()} PACE: ${secondsToPace(leg.pace)}/mi</div>
+          <input type="range" min="330" max="540" step="5" value="${leg.pace}"
+            style="accent-color:${color}"
+            oninput="updatePace('${leg.runner}', this.value, ${leg.leg})" />
+          <div class="range-labels"><span>5:30</span><span>9:00</span></div>
+
+          <div class="actual-label">ACTUAL FINISH TIME</div>
+          <input type="text" class="actual-input ${hasActual?'has-val':''}"
+            id="actual-input-${leg.leg}"
+            placeholder="e.g. 10:31 AM"
+            value="${state.actualInputs[leg.leg]||''}"
+            oninput="updateActual(${leg.leg}, this.value)" />
+          <div class="actual-confirm ${hasActual?'show':''}" id="actual-confirm-${leg.leg}">
+            ✓ Actual time set — downstream legs updated
+          </div>
+
+          <button class="complete-btn ${isDone?'done':''}" id="complete-btn-${leg.leg}"
+            onclick="toggleComplete(${leg.leg})">
+            ${isDone?'✓ LEG COMPLETE':'MARK COMPLETE'}
+          </button>
+        </div>
+      </div>
+    `;
+    el.appendChild(card);
+  });
+
+  updateHeader();
+}
+
+// ── RENDER RUNNERS ──
+function renderRunners() {
+  const sched = computeSchedule();
+  const el = document.getElementById('view-runners');
+  el.innerHTML = '';
+
+  RUNNERS.forEach(runner => {
+    const legs = sched.filter(l => l.runner === runner);
+    const totalMi = legs.reduce((a,b)=>a+b.miles,0);
+    const totalTime = legs.reduce((a,b)=>a+b.predMins,0);
+    const pace = state.paces[runner];
+    const color = COLORS[runner];
+
+    const card = document.createElement('div');
+    card.className = 'runner-card';
+    card.style.borderLeft = `4px solid ${color}`;
+    card.innerHTML = `
+      <div class="runner-header">
+        <div>
+          <div class="runner-name" style="color:${color}">${runner}</div>
+          <div class="runner-meta">LEGS ${legs.map(l=>l.leg).join(' & ')} • ${totalMi.toFixed(2)} MILES • ${formatDur(totalTime)}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="runner-pace-label">PACE</div>
+          <div class="runner-pace-val" id="rpace-${runner}">${secondsToPace(pace)}/mi</div>
+        </div>
+      </div>
+      <input type="range" min="330" max="540" step="5" value="${pace}"
+        style="accent-color:${color};width:100%;margin-bottom:4px"
+        oninput="updatePaceGlobal('${runner}', this.value)" />
+      <div class="range-labels" style="margin-bottom:16px"><span>5:30/mi (fast)</span><span>9:00/mi (easy)</span></div>
+      <div class="runner-legs" style="grid-template-columns:repeat(${legs.length},1fr)">
+        ${legs.map(l=>`
+          <div class="runner-leg-card" style="border:1px solid ${color}33">
+            <div class="rleg-num">LEG ${l.leg}</div>
+            <div class="rleg-miles">${l.miles} mi</div>
+            <div class="rleg-times" id="rleg-times-${l.leg}">${minutesToTime(l.startMin)} → ${minutesToTime(l.effFinish)}</div>
+            <div class="rleg-dur" id="rleg-dur-${l.leg}">${formatDur(l.predMins)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+// ── RENDER STATS ──
+function renderStats() {
+  const sched = computeSchedule();
+  const el = document.getElementById('view-stats');
+  const finalFinish = sched[sched.length-1].effFinish;
+  const completedCount = Object.values(state.completed).filter(Boolean).length;
+  const totalAscent = LEGS.reduce((a,b)=>a+b.ascent,0);
+  const totalDescent = LEGS.reduce((a,b)=>a+b.descent,0);
+
+  const runnerSummary = RUNNERS.map(r => {
+    const legs = sched.filter(l=>l.runner===r);
+    return {
+      runner:r,
+      totalMi: legs.reduce((a,b)=>a+b.miles,0),
+      totalTime: legs.reduce((a,b)=>a+b.predMins,0),
+      pace: state.paces[r]
+    };
+  }).sort((a,b)=>b.totalMi-a.totalMi);
+
+  const hardest = [...sched].sort((a,b)=>a.diffRating-b.diffRating).slice(0,4);
+
+  el.innerHTML = `
+    <div class="stat-section">
+      <div class="section-label">RACE OVERVIEW</div>
+      <div class="overview-grid">
+        ${[
+          ['Total Miles','72.54'],
+          ['Legs','12'],
+          ['Runners','6'],
+          ['Start','8:30 AM'],
+          ['Est. Finish', minutesToTime(finalFinish)],
+          ['Total Time', formatDur(finalFinish-START)],
+          ['Total Ascent', totalAscent.toLocaleString()+' ft'],
+          ['Total Descent', totalDescent.toLocaleString()+' ft'],
+          ['Completed', completedCount+'/12'],
+        ].map(([k,v])=>`
+          <div class="overview-cell">
+            <div class="overview-key">${k}</div>
+            <div class="overview-val">${v}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="stat-section">
+      <div class="section-label">RUNNER BREAKDOWN</div>
+      ${runnerSummary.map(({runner,totalMi,totalTime,pace})=>`
+        <div class="runner-bar-row">
+          <div style="font-weight:700;color:${COLORS[runner]}">${runner}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(totalMi/17)*100}%;background:${COLORS[runner]}"></div>
+          </div>
+          <div class="bar-miles">${totalMi.toFixed(2)} mi</div>
+          <div class="bar-time">${formatDur(totalTime)}</div>
+          <div class="bar-pace">${secondsToPace(pace)}/mi</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="stat-section">
+      <div class="section-label">HARDEST LEGS (by difficulty rating)</div>
+      ${hardest.map(leg=>`
+        <div class="hard-row">
+          <span style="color:${COLORS[leg.runner]}">Leg ${leg.leg} — ${leg.runner}</span>
+          <span style="font-family:monospace;color:#ef4444">Rating ${leg.diffRating}/12 • ${leg.miles} mi</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <button class="reset-btn" onclick="resetAll()">RESET ALL DATA</button>
+  `;
+}
+
+// ── INTERACTIONS ──
+let expandedLeg = null;
+
+function toggleLeg(legNum) {
+  if (expandedLeg === legNum) {
+    document.getElementById(`detail-${legNum}`).classList.remove('open');
+    document.getElementById(`toggle-${legNum}`).textContent = '▼';
+    expandedLeg = null;
+  } else {
+    if (expandedLeg) {
+      document.getElementById(`detail-${expandedLeg}`).classList.remove('open');
+      document.getElementById(`toggle-${expandedLeg}`).textContent = '▼';
+    }
+    document.getElementById(`detail-${legNum}`).classList.add('open');
+    document.getElementById(`toggle-${legNum}`).textContent = '▲';
+    expandedLeg = legNum;
+  }
+}
+
+function updatePace(runner, val, fromLeg) {
+  state.paces[runner] = Number(val);
+  save();
+  refreshAllTimes();
+  // Update pace label in this card
+  const paceStr = secondsToPace(Number(val));
+  const lbl = document.getElementById(`pace-label-${fromLeg}`);
+  if (lbl) lbl.textContent = `${runner.toUpperCase()} PACE: ${paceStr}/mi`;
+  const disp = document.getElementById(`pace-disp-${fromLeg}`);
+  if (disp) disp.textContent = paceStr;
+  // Update runner view if visible
+  const rpace = document.getElementById(`rpace-${runner}`);
+  if (rpace) rpace.textContent = paceStr+'/mi';
+}
+
+function updatePaceGlobal(runner, val) {
+  state.paces[runner] = Number(val);
+  save();
+  refreshAllTimes();
+  const paceStr = secondsToPace(Number(val));
+  const rpace = document.getElementById(`rpace-${runner}`);
+  if (rpace) rpace.textContent = paceStr+'/mi';
+}
+
+function updateActual(legNum, val) {
+  state.actualInputs[legNum] = val;
+  const parsed = parseTime(val);
+  if (parsed !== null) {
+    state.actuals[legNum] = parsed;
+  } else if (val === '') {
+    delete state.actuals[legNum];
+  }
+  save();
+  refreshAllTimes();
+
+  const input = document.getElementById(`actual-input-${legNum}`);
+  const confirm = document.getElementById(`actual-confirm-${legNum}`);
+  const hasActual = state.actuals[legNum] != null;
+  if (input) input.className = 'actual-input' + (hasActual?' has-val':'');
+  if (confirm) confirm.className = 'actual-confirm' + (hasActual?' show':'');
+}
+
+function toggleComplete(legNum) {
+  state.completed[legNum] = !state.completed[legNum];
+  save();
+  const card = document.getElementById(`leg-card-${legNum}`);
+  const btn = document.getElementById(`complete-btn-${legNum}`);
+  const isDone = state.completed[legNum];
+  if (card) card.className = 'leg-card' + (isDone?' done':'');
+  if (btn) { btn.className = 'complete-btn'+(isDone?' done':''); btn.textContent = isDone?'✓ LEG COMPLETE':'MARK COMPLETE'; }
+  updateHeader();
+}
+
+function refreshAllTimes() {
+  const sched = computeSchedule();
+  sched.forEach(leg => {
+    const hasActual = state.actuals[leg.leg] != null;
+    const startEl = document.getElementById(`start-${leg.leg}`);
+    const finishEl = document.getElementById(`finish-${leg.leg}`);
+    const durEl = document.getElementById(`dur-${leg.leg}`);
+    const predDurEl = document.getElementById(`pred-dur-${leg.leg}`);
+    const rlegTimes = document.getElementById(`rleg-times-${leg.leg}`);
+    const rlegDur = document.getElementById(`rleg-dur-${leg.leg}`);
+    const finishLabel = finishEl?.previousElementSibling;
+
+    if (startEl) startEl.textContent = minutesToTime(leg.startMin);
+    if (finishEl) {
+      finishEl.textContent = minutesToTime(leg.effFinish);
+      finishEl.style.color = hasActual ? '#10b981' : '#e8e4d9';
+    }
+    if (finishLabel) finishLabel.textContent = (hasActual?'ACTUAL':'PRED.')+' FINISH';
+    if (durEl) durEl.textContent = formatDur(leg.predMins);
+    if (predDurEl) predDurEl.textContent = formatDur(leg.predMins);
+    if (rlegTimes) rlegTimes.textContent = `${minutesToTime(leg.startMin)} → ${minutesToTime(leg.effFinish)}`;
+    if (rlegDur) rlegDur.textContent = formatDur(leg.predMins);
+  });
+  updateHeader();
+}
+
+function updateHeader() {
+  const sched = computeSchedule();
+  const finalFinish = sched[sched.length-1].effFinish;
+  document.getElementById('est-finish').textContent = minutesToTime(finalFinish);
+  const completedCount = Object.values(state.completed).filter(Boolean).length;
+  const countEl = document.getElementById('completed-count');
+  const progressWrap = document.getElementById('progress-wrap');
+  if (completedCount > 0) {
+    countEl.style.display = '';
+    countEl.textContent = `✅ ${completedCount}/12 done`;
+    progressWrap.style.display = '';
+    document.getElementById('progress-text').textContent = `${completedCount}/12 LEGS`;
+    document.getElementById('progress-fill').style.width = `${(completedCount/12)*100}%`;
+  } else {
+    countEl.style.display = 'none';
+    progressWrap.style.display = 'none';
+  }
+}
+
+function resetAll() {
+  if (!confirm('Reset all actuals, pace adjustments, and completions?')) return;
+  state = {
+    paces: { GFB:397, Miles:397, Cat:397, Chris:397, Blake:397, Ryland:397 },
+    actuals: {}, actualInputs: {}, completed: {}
+  };
+  save();
+  render();
+}
+
+// ── VIEW SWITCHING ──
+let currentView = 'schedule';
+
+function render() {
+  renderSchedule();
+  if (currentView === 'runners') renderRunners();
+  if (currentView === 'stats') renderStats();
+  updateHeader();
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    currentView = btn.dataset.view;
+    const viewEl = document.getElementById(`view-${currentView}`);
+    viewEl.classList.add('active');
+    if (currentView === 'runners') renderRunners();
+    if (currentView === 'stats') renderStats();
+  });
+});
+
+// ── INIT ──
+load();
+render();
+</script>
+</body>
+</html>
